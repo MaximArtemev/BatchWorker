@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 source /etc/azcreds/afscreds.sh
+# /etc/azcreds/azlogin.sh
 if test -f "$1.ipynb"; then
     export PYSCRIPT=$1
     jupyter nbconvert --to script $1.ipynb
     export EXPERIMENT_FOLDER=$USER_CLUSTER_NAME-$(date +"%F-%H-%M-%S")
     export RESOURCE_NAME=$EXPERIMENT_FOLDER
-    envsubst < aks_spec.yaml > _aks_spec.yaml
-    azcopy cp "_aks_spec.yaml" "https://$ACI_PERS_STORAGE_ACCOUNT_NAME.file.core.windows.net/$ACI_PERS_SHARE_NAME/$EXPERIMENT_FOLDER/_aks_spec.yaml?$SAS_TOKEN"
+    envsubst < aci_spec.yaml > _aci_spec.yaml
+
+    azcopy cp "_aci_spec.yaml" "https://$ACI_PERS_STORAGE_ACCOUNT_NAME.file.core.windows.net/$ACI_PERS_SHARE_NAME/$EXPERIMENT_FOLDER/_aci_spec.yaml?$SAS_TOKEN"
     azcopy cp "$1.py" "https://$ACI_PERS_STORAGE_ACCOUNT_NAME.file.core.windows.net/$ACI_PERS_SHARE_NAME/$EXPERIMENT_FOLDER/$1.py?$SAS_TOKEN"
-    kubectl --kubeconfig=/etc/azcreds/kubeconfig.users apply -f _aks_spec.yaml
-until kubectl --kubeconfig=/etc/azcreds/kubeconfig.users get jobs $RESOURCE_NAME -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' | grep True ; do sleep 1 ; done
+    az container create -g $ACI_PERS_RESOURCE_GROUP --file _aci_spec.yaml
+    az container logs --follow -g $ACI_PERS_RESOURCE_GROUP -n $RESOURCE_NAME
     azcopy cp  "https://$ACI_PERS_STORAGE_ACCOUNT_NAME.file.core.windows.net/$ACI_PERS_SHARE_NAME/$EXPERIMENT_FOLDER/*?$SAS_TOKEN" ./$EXPERIMENT_FOLDER --recursive=true
-    kubectl --kubeconfig=/etc/azcreds/kubeconfig.users delete -f _aks_spec.yaml
+    az container delete -g $ACI_PERS_RESOURCE_GROUP -n $RESOURCE_NAME -y
 else
     echo "No $1.ipynb"
 fi
